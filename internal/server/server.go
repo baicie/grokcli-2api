@@ -4519,6 +4519,16 @@ func registrationClient(options Options) *regclient.Client {
 		BaseURL: base,
 		Token:   token,
 		HTTP:    sharedRegistrationHTTP(),
+		HTTPLong: &http.Client{
+			Timeout: 2 * time.Minute,
+			Transport: &http.Transport{
+				DialContext:           (&net.Dialer{Timeout: time.Second}).DialContext,
+				MaxIdleConns:          16,
+				MaxIdleConnsPerHost:   16,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 90 * time.Second,
+			},
+		},
 	}
 	return regClientCache
 }
