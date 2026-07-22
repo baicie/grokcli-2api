@@ -144,7 +144,8 @@ jobs:
 
             docker compose pull
             docker compose up -d --remove-orphans --wait --wait-timeout 180
-            curl -fsS http://127.0.0.1:3000/health >/dev/null || curl -fsS http://127.0.0.1:40081/health >/dev/null
+            HOST_PORT="$(docker compose port grokcli-2api 40081 | head -n 1 | sed 's/.*://')"
+            curl -fsS "http://127.0.0.1:${HOST_PORT}/health" >/dev/null
 
             docker image prune -f >/dev/null 2>&1 || true
             echo "::notice::Deployed $IMAGE to $(hostname)"
