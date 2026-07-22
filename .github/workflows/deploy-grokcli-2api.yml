@@ -59,7 +59,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=sha,prefix=git-
+            type=raw,value=git-${{ github.sha }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push
@@ -77,7 +77,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     environment:
       name: grokcli-2api-prod
 
@@ -111,19 +111,8 @@ jobs:
           script: |
             set -euo pipefail
 
-            IMAGE='${{ env.IMAGE_NAME }}:latest'
+            IMAGE='${{ env.IMAGE_NAME }}:git-${{ github.sha }}'
             APP_DIR="$HOME/workspace/grokcli-2api"
-
-            configure_mirror() {
-              echo "::group::Configuring Docker mirror"
-              sudo mkdir -p /etc/docker
-              printf '%s\n' '{"registry-mirrors":["https://mirror.ccs.tencentyun.com"]}' | sudo tee /etc/docker/daemon.json
-              sudo systemctl daemon-reload 2>/dev/null || true
-              sudo systemctl restart docker 2>/dev/null || true
-              sleep 8
-              docker info | grep -A 3 "Registry Mirrors" || true
-              echo "::endgroup::"
-            }
 
             pull_with_retry() {
               for i in 1 2 3 4 5; do
@@ -140,7 +129,6 @@ jobs:
               return 1
             }
 
-            configure_mirror
             pull_with_retry "$IMAGE" || { echo "::error::failed to pull $IMAGE"; exit 1; }
 
             cd "$APP_DIR"
@@ -155,17 +143,8 @@ jobs:
             export GROKCLI_2API_IMAGE="$IMAGE"
 
             docker compose pull
-            docker compose up -d --remove-orphans
-
-            echo "::group::Waiting grokcli-2api health"
-            for i in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then
-                echo "grokcli-2api healthy after ${i}s"
-                break
-              fi
-              sleep 1
-            done
-            echo "::endgroup::"
+            docker compose up -d --remove-orphans --wait --wait-timeout 180
+            curl -fsS http://127.0.0.1:3000/health >/dev/null || curl -fsS http://127.0.0.1:40081/health >/dev/null
 
             docker image prune -f >/dev/null 2>&1 || true
             echo "::notice::Deployed $IMAGE to $(hostname)"
